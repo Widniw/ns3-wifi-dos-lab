@@ -73,6 +73,7 @@ int main(int argc, char *argv[])
   int channelWidth = 20;     // Default channel width [MHz]
   int gi = 800;              // Default guard interval [ns]
   uint32_t nAttacker = 1;
+  int attackerThroughput = 150e6;
 
   // Parse command line arguments
   CommandLine cmd;
@@ -80,6 +81,7 @@ int main(int argc, char *argv[])
   cmd.AddValue("mcs", "use a specific MCS (0-11)", mcs);
   cmd.AddValue("nWifi", "number of stations", nWifi);
   cmd.AddValue("nAttacker", "number of attackers", nAttacker);
+  cmd.AddValue("attackerThroughput", "Attacker's Throughput", attackerThroughput);
   cmd.Parse(argc, argv);
 
   // Print simulation settings to screen
@@ -88,6 +90,7 @@ int main(int argc, char *argv[])
     std::cout << "- Simulation Time: " << simulationTime << " s" << std::endl;
   std::cout << "- number of transmitting stations: " << nWifi << std::endl;
   std::cout << "- Number of attackers: " << nAttacker << std::endl;
+  std::cout << "- Attacker's throughput: " << attackerThroughput << std::endl;
   std::cout << "- frequency band: 5 GHz" << std::endl;
   std::cout << "- modulation and coding scheme (MCS): " << mcs << std::endl;
   std::cout << "- channel width: " << channelWidth << " MHz" << std::endl;
@@ -192,17 +195,17 @@ int main(int argc, char *argv[])
     sinkApplications.Add(packetSinkHelper.Install(wifiServerNode.Get(0)));      // Install traffic sink
   }
 
+  uint32_t floodedPortNumber = 12345;
   // Perform UDP Flooding 
   for (uint32_t index = 0; index < nAttacker; ++index) {
-    uint32_t floodedPortNumber = 12345;
     auto ipv4 = wifiServerNode.Get(0)->GetObject<Ipv4>();                       // Get destination's IP interface
     const auto serverAddress = ipv4->GetAddress(1, 0).GetLocal();                 // Get destination's IP address
-    InetSocketAddress sinkSocket(serverAddress, floodedPortNumber);                            // Configure destination socket
+    InetSocketAddress sinkSocket(serverAddress, floodedPortNumber++);                            // Configure destination socket
     OnOffHelper onOffHelper("ns3::UdpSocketFactory", sinkSocket);           // Configure traffic generator: UDP, destination socket
-    onOffHelper.SetConstantRate(DataRate(150e6), 1472);            
+    onOffHelper.SetConstantRate(DataRate(attackerThroughput), 56);            
     attackerApplication.Add(onOffHelper.Install(wifiAttackerNodes.Get(index)));    // Install traffic generator on station
-    // PacketSinkHelper packetSinkHelper("ns3::UdpSocketFactory", sinkSocket); // Configure traffic sink
-    // sinkattackerApplication.Add(packetSinkHelper.Install(wifiServerNode.Get(0)));      // Install traffic sink
+    PacketSinkHelper packetSinkHelper("ns3::UdpSocketFactory", sinkSocket); // Configure traffic sink
+    sinkattackerApplication.Add(packetSinkHelper.Install(wifiServerNode.Get(0)));      // Install traffic sink
   }
 
   // Configure application start/stop times
@@ -216,8 +219,8 @@ int main(int argc, char *argv[])
   sourceApplications.Stop(Seconds(simulationTime + 1));
   attackerApplication.Start(Seconds(1.0));
   attackerApplication.Stop(Seconds(simulationTime + 1));
-  // sinkattackerApplication.Start(Seconds(0.0));
-  // sinkattackerApplication.Stop(Seconds(simulationTime + 1));
+  sinkattackerApplication.Start(Seconds(0.0));
+  sinkattackerApplication.Stop(Seconds(simulationTime + 1));
 
 
   stack.EnablePcapIpv4All("ip-trace"); // nodes have to be added first
